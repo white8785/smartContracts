@@ -24,39 +24,54 @@ import "@openzeppelin/contracts/utils/Strings.sol";
 contract PoolPartyCollection is ERC1155, Ownable, Pausable, ERC1155Burnable {
     // tokenId -> URI
     mapping(uint256 => string) private _uris;
+
     // tokenId -> max_supply
     mapping(uint256 => uint256) public tokenMaxSupply;
+
     // tokenId -> total_supply
     mapping(uint256 => uint256) public tokenSupply;
 
     string private _contractURI =
-        "ContractURI not configured.  See {setContractURI}";
+        "ContractURI not configured.  Execute {setContractURI}";
 
     // Duplicated events is how optional params work in Solidity. <facepalm>
-    event ContractURILoggingEvent(string log);
-    event ContractURILoggingEvent(string log, string data);
-    event TokenURILoggingEvent(string log, uint256 newURI, string data);
-    event MaxSupplyLoggingEvent(uint256 id, uint256 maxSupply);
+    event BatchBurnLoggingEvent(
+        address account,
+        uint256[] ids,
+        uint256[] amounts
+    );
     event ContractLoggingEvent(string log);
     event ContractLoggingEvent(
-        address to,
+        address account,
         uint256 id,
         uint256 amount,
         string data
     );
 
-    event MintLoggingEvent(address to, uint256 id, uint256 amount, string data);
+    event ContractURILoggingEvent(string log);
+    event ContractURILoggingEvent(string log, string data);
+    event MaxSupplyLoggingEvent(uint256 id, uint256 maxSupply);
     event MintLoggingEvent(
-        address to,
+        address account,
+        uint256 id,
+        uint256 amount,
+        string data
+    );
+    event MintLoggingEvent(
+        address account,
         uint256[] ids,
         uint256[] amounts,
         string data
     );
 
+    event TokenURILoggingEvent(string log, uint256 newURI, string data);
+
     constructor() ERC1155("") {
         tokenMaxSupply[1] = 333; // RSVPs
         tokenMaxSupply[2] = 333;
         // mint(msg.sender, 1, 333, "");
+        _uris[0] = "Invalid token";
+        _uris[1] = "TokenURI not configured.  See {setTokenURI}.";
     }
 
     /// Owner Functions ///
@@ -109,7 +124,6 @@ contract PoolPartyCollection is ERC1155, Ownable, Pausable, ERC1155Burnable {
      * NOTE: Required by OpenSea
      */
     function contractURI() public returns (string memory) {
-        emit ContractURILoggingEvent("ContractURI requested");
         return _contractURI;
     }
 
@@ -127,20 +141,20 @@ contract PoolPartyCollection is ERC1155, Ownable, Pausable, ERC1155Burnable {
      * a single owner as long as the total amount of tokens requested
      * does not exceed the max supply of tokens.
      *
-     * @param to Intended token owner's wallet address
+     * @param account Intended token owner's wallet address
      * @param id ID of token to be minted
      * @param amount Number of tokens to mint
      * @param data Data to include in token
      *
      */
     function mint(
-        address to,
+        address account,
         uint256 id,
         uint256 amount,
         string memory data
     ) public onlyOwner {
         emit ContractLoggingEvent("Minting started.");
-        emit MintLoggingEvent(to, id, amount, data);
+        emit MintLoggingEvent(account, id, amount, data);
 
         // Fail if token's max supply will be exceeded
         uint256 _requestedtokenSupply = tokenSupply[id] + amount;
@@ -149,12 +163,14 @@ contract PoolPartyCollection is ERC1155, Ownable, Pausable, ERC1155Burnable {
             "Requested token amount exceeds token supply"
         );
 
-        _mint(to, id, amount, abi.encode(data));
-
         // Validate the world is sane and update
         assert(_requestedtokenSupply >= tokenSupply[id]);
         tokenSupply[id] = _requestedtokenSupply;
 
+        // Complete transaction
+        _mint(account, id, amount, abi.encode(data));
+
+        // Flex on the haters
         emit ContractLoggingEvent("Minting successful.");
     }
 
@@ -163,7 +179,7 @@ contract PoolPartyCollection is ERC1155, Ownable, Pausable, ERC1155Burnable {
      * single owner as long as the requested amount of tokens
      * doesn't exceed the max supply of said token.
      *
-     * @param to Intended token owner's wallet address
+     * @param account Intended token owner's wallet address
      * @param ids List of IDs of tokens to be minted
      * @param amounts List of amounts of tokens to mint
      * @param data Data to include in token
@@ -172,24 +188,25 @@ contract PoolPartyCollection is ERC1155, Ownable, Pausable, ERC1155Burnable {
      *
      */
     function mintBatch(
-        address to,
+        address account,
         uint256[] memory ids,
         uint256[] memory amounts,
         string memory data
     ) public onlyOwner {
         emit ContractLoggingEvent("Batch Minting started.");
-        emit MintLoggingEvent(to, ids, amounts, data);
+        emit MintLoggingEvent(account, ids, amounts, data);
 
         /**
          * For the number of items in the array starting from zero,
          * increment by one, until equal to the total number of items,
          * and ensure tokenSupplies are not exceeded.
          */
-        for (uint256 _id = 0; _id <= ids.length - 1; _id++) {
-            uint256 _requestedTokenId = ids[_id];
+        for (uint256 index = 0; index < ids.length; index++) {
+            uint256 _requestedTokenId = ids[index];
             uint256 _requestedtokenSupply = tokenSupply[_requestedTokenId] +
-                amounts[_id];
+                amounts[index];
 
+            // Do not exceed max token count
             require(
                 _requestedtokenSupply <= tokenMaxSupply[_requestedTokenId],
                 string(
@@ -197,31 +214,116 @@ contract PoolPartyCollection is ERC1155, Ownable, Pausable, ERC1155Burnable {
                         "Requested tokenId: ",
                         Strings.toString(_requestedTokenId),
                         " amount: ",
-                        Strings.toString(amounts[_id]),
+                        Strings.toString(amounts[index]),
                         " exceeds token supply: ",
                         Strings.toString(tokenMaxSupply[_requestedTokenId])
                     )
                 )
             );
 
-            tokenSupply[_requestedTokenId] += amounts[_id];
+            // update supply data
+            tokenSupply[_requestedTokenId] += amounts[index];
         }
 
         // Party Time!
-        _mintBatch(to, ids, amounts, abi.encode(data));
+        _mintBatch(account, ids, amounts, abi.encode(data));
 
+        // flex on everyone
         emit ContractLoggingEvent("Batch Minting successful.");
     }
 
-    //    function burn(
-    //        address to,
-    //        uint256 id,
-    //        uint amount
-    //        ) override public {
-    //            require(to == msg.sender || isApprovedForAll(to, msg.sender),
-    //            "ERC1155: The caller is not approved to burn, nor do they own this token."
-    //            );
-    //
-    //            _burn(to, id, amount);
-    //        }
+    /**
+     * @dev Burns any amount of tokens for a single tokenId to
+     * a single owner as long as the total amount of tokens requested
+     * to be burned does not exceed yield a negative value.
+     *
+     * @param account Intended token owner's wallet address
+     * @param id ID of token to be burned
+     * @param amount Number of tokens to burn
+     *
+     */
+    function burn(
+        address account,
+        uint256 id,
+        uint256 amount
+    ) public override {
+        require(
+            account == _msgSender() || isApprovedForAll(account, _msgSender()),
+            "ERC1155: caller is not owner nor approved"
+        );
+
+        emit ContractLoggingEvent("Burning started.");
+
+        uint256 _requestedTokenId = id;
+        uint256 _tokenSupply = tokenSupply[_requestedTokenId];
+
+        // If negative, this triggers a revert
+        uint256 _adjustedSupply = _tokenSupply - amount;
+
+        // Validate the world is sane and update
+        assert(_adjustedSupply >= _tokenSupply);
+
+        // Set new tokenSupply value
+        tokenSupply[_requestedTokenId] = _adjustedSupply;
+
+        _burn(account, id, amount);
+
+        // Yell it from the rooftop
+        emit ContractLoggingEvent("Burning successful.");
+    }
+
+    /**
+     * @dev Burns any amount of tokens for multiple tokenIds for a
+     * single owner as long as the requested amount of tokens
+     * to burn of said token yields a negative value, and the caller
+     * is the owner or approved.
+     *
+     * @param account Intended token owner's wallet address
+     * @param ids List of IDs of tokens to be burned
+     * @param amounts List of amounts of tokens to burned
+     *
+     * NOTE: The 'ids' & 'amounts' lists should match in length.
+     *
+     */
+    function burnBatch(
+        address account,
+        uint256[] memory ids,
+        uint256[] memory amounts
+    ) public override {
+        require(
+            account == _msgSender() || isApprovedForAll(account, _msgSender()),
+            "ERC1155: caller is not owner nor approved"
+        );
+
+        emit ContractLoggingEvent("Burning started.");
+
+        /**
+         * For the number of items in the array starting from zero,
+         * increment by one, until equal to the total number of items,
+         * and ensure tokenSupplies are not exceeded.
+         */
+        for (uint256 index = 0; index < ids.length; index++) {
+            require(ids[index] != 0, "Burning zero tokens is not possible.");
+
+            uint256 _requestedTokenId = ids[index];
+            uint256 _tokenSupply = tokenSupply[_requestedTokenId];
+
+            // If negative, this uint256 triggers a revert
+            uint256 _requestedtokenSupply = _tokenSupply - amounts[index];
+
+            require(
+                _requestedtokenSupply < _tokenSupply,
+                "The new supply count is not less than original, what did you do?"
+            );
+
+            // update supply data
+            tokenSupply[_requestedTokenId] = _requestedtokenSupply;
+        }
+
+        _burnBatch(account, ids, amounts);
+
+        emit BatchBurnLoggingEvent(account, ids, amounts);
+        emit ContractLoggingEvent("Batch burn complete.");
+    }
 }
+
