@@ -123,7 +123,7 @@ contract PoolPartyCollection is ERC1155, Ownable, Pausable, ERC1155Burnable {
      *
      * NOTE: Required by OpenSea
      */
-    function contractURI() public returns (string memory) {
+    function contractURI() public view returns (string memory) {
         return _contractURI;
     }
 
