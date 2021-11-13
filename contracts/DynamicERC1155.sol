@@ -21,7 +21,7 @@ import "@openzeppelin/contracts/utils/Strings.sol";
  */
 /// @title Project Pool Party Collection
 /// @custom:security-contact poolpartycoin@protonmail.com
-contract PoolPartyCollection is ERC1155, Ownable, Pausable, ERC1155Burnable {
+contract Dynamic1155 is ERC1155, Ownable, Pausable, ERC1155Burnable {
     // tokenId -> URI
     mapping(uint256 => string) private _uris;
 
@@ -31,8 +31,15 @@ contract PoolPartyCollection is ERC1155, Ownable, Pausable, ERC1155Burnable {
     // tokenId -> total_supply
     mapping(uint256 => uint256) public tokenSupply;
 
+    // URI for all assets created under this collection
     string private _contractURI =
         "ContractURI not configured.  Execute {setContractURI}";
+
+    // Define if sale is active
+    bool public saleIsActive = true;
+
+    // Max amount of tokens per mint
+    uint256 public MAX_PURCHASE = 50;
 
     // Duplicated events is how optional params work in Solidity. <facepalm>
     event BatchBurnLoggingEvent(
@@ -79,7 +86,11 @@ contract PoolPartyCollection is ERC1155, Ownable, Pausable, ERC1155Burnable {
     /**
      * @dev Updates the contractURI
      */
-    function setContractURI(string memory _newcontractURI) public onlyOwner {
+    function setContractURI(string memory _newcontractURI)
+        external
+        onlyOwner
+        whenNotPaused
+    {
         _contractURI = _newcontractURI;
         emit ContractURILoggingEvent("ContractURI set.", _newcontractURI);
     }
@@ -87,7 +98,11 @@ contract PoolPartyCollection is ERC1155, Ownable, Pausable, ERC1155Burnable {
     /**
      * @dev Updates the tokenURI for a given tokenId
      */
-    function setTokenUri(uint256 tokenId, string memory _uri) public onlyOwner {
+    function setTokenUri(uint256 tokenId, string memory _uri)
+        external
+        onlyOwner
+        whenNotPaused
+    {
         _uris[tokenId] = _uri;
         emit TokenURILoggingEvent("TokenURI set.", tokenId, _uri);
     }
@@ -95,7 +110,7 @@ contract PoolPartyCollection is ERC1155, Ownable, Pausable, ERC1155Burnable {
     /**
      * @dev Pauses all contract operations
      */
-    function pause() public onlyOwner {
+    function pause() external onlyOwner {
         _pause();
         emit ContractLoggingEvent("Contract is paused.");
     }
@@ -103,14 +118,25 @@ contract PoolPartyCollection is ERC1155, Ownable, Pausable, ERC1155Burnable {
     /**
      * @dev Unpauses all contract operations
      */
-    function unpause() public onlyOwner {
+    function unpause() external onlyOwner {
         emit ContractLoggingEvent("Contract is unpaused.");
+    }
+
+    /*
+     * Pause sale if active, make active if paused
+     */
+    function setSaleState(bool newState) public onlyOwner whenNotPaused {
+        saleIsActive = newState;
     }
 
     /**
      * @dev Sets the tokenId's max supply value.
      */
-    function setTokenMaxSupply(uint256 id, uint256 maxSupply) public onlyOwner {
+    function setTokenMaxSupply(uint256 id, uint256 maxSupply)
+        external
+        onlyOwner
+        whenNotPaused
+    {
         tokenMaxSupply[id] = maxSupply;
         emit ContractLoggingEvent("Token max supply set.");
         emit MaxSupplyLoggingEvent(id, maxSupply);
@@ -152,7 +178,9 @@ contract PoolPartyCollection is ERC1155, Ownable, Pausable, ERC1155Burnable {
         uint256 id,
         uint256 amount,
         string memory data
-    ) public onlyOwner {
+    ) public onlyOwner whenNotPaused {
+        require(saleIsActive, "Minting is closed");
+
         emit ContractLoggingEvent("Minting started.");
         emit MintLoggingEvent(account, id, amount, data);
 
@@ -192,7 +220,9 @@ contract PoolPartyCollection is ERC1155, Ownable, Pausable, ERC1155Burnable {
         uint256[] memory ids,
         uint256[] memory amounts,
         string memory data
-    ) public onlyOwner {
+    ) public onlyOwner whenNotPaused {
+        require(saleIsActive, "Minting is closed.");
+
         emit ContractLoggingEvent("Batch Minting started.");
         emit MintLoggingEvent(account, ids, amounts, data);
 
@@ -246,7 +276,7 @@ contract PoolPartyCollection is ERC1155, Ownable, Pausable, ERC1155Burnable {
         address account,
         uint256 id,
         uint256 amount
-    ) public override {
+    ) public override onlyOwner whenNotPaused {
         require(
             account == _msgSender() || isApprovedForAll(account, _msgSender()),
             "ERC1155: caller is not owner nor approved"
@@ -289,7 +319,7 @@ contract PoolPartyCollection is ERC1155, Ownable, Pausable, ERC1155Burnable {
         address account,
         uint256[] memory ids,
         uint256[] memory amounts
-    ) public override {
+    ) public override onlyOwner whenNotPaused {
         require(
             account == _msgSender() || isApprovedForAll(account, _msgSender()),
             "ERC1155: caller is not owner nor approved"
